@@ -17,6 +17,8 @@ Kerjakan berurutan: **A. Backend → B. Frontend → C. Notifikasi WA → D. Mig
 
 **Keamanan:** semua rahasia (SESSION_SECRET, hash sandi darurat, token Fonnte, ID spreadsheet/folder) ada di **Script Properties**, bukan di kode/Sheets/frontend. Batasi editor proyek Apps Script; jangan bagikan spreadsheet database. Rotasi sesi: jalankan `rotasiSecretSesi()`; sandi darurat hilang: `resetAksesDarurat()`.
 
+**Cara manual (bila pembuatan spreadsheet otomatis tidak diizinkan):** buat Google Sheet kosong sendiri di Drive → salin ID-nya (bagian antara `/d/` dan `/edit` pada URL) → di Apps Script buka ⚙️ **Setelan Proyek → Properti skrip → Tambah properti** → nama `SPREADSHEET_ID`, nilai = ID tadi → Simpan → jalankan `setupAppEnvironment`. Alternatif lain: buat skrip **dari dalam Google Sheet** (menu *Ekstensi → Apps Script*), tempel kode di sana; spreadsheet itu otomatis dipakai.
+
 ## B. Frontend (GitHub Pages) — lewat terminal
 Isi ZIP `sikad-frontend.zip` **adalah** isi repository. Setelah ekstrak, folder hasil ekstraksi (yang langsung berisi `index.html`) adalah folder tempat `git init`.
 1. Ekstrak ZIP. Buka `js/config.js`, ganti `GANTI_DENGAN_ID_DEPLOYMENT` dengan URL `/exec` dari langkah A7.
@@ -59,6 +61,29 @@ git push -u origin main
 4. Frontend: timpa file dengan ZIP baru (jangan timpa `js/config.js` yang sudah berisi URL Anda), lalu `git add .` → `git commit -m "v1.1"` → `git push` → Ctrl+Shift+R.
 > Catatan kuota: tiap siswa memakai 2 panggilan server per ujian (mulai & kirim). Untuk 30–50 siswa serentak ini aman; ujian besar sebaiknya dibuka bertahap per kelas.
 
+## F. Sandi pengguna, profil & cara memperbarui (v1.2)
+
+### Sandi apa yang dipakai guru/siswa setelah admin menginput data?
+1. Saat admin menambah akun di **Master Data → Tambah**, sistem membuat **sandi awal** — otomatis (acak 10 karakter) atau yang Anda ketik sendiri (kolom *Sandi awal* + *Konfirmasi*).
+2. Sandi awal **tampil sekali** di jendela hasil, dengan tombol **Salin** dan **Cetak kartu akun (PDF)**. Berikan ke orangnya bersama alamat portal.
+3. Pengguna login dengan **NIP/NIS + sandi awal itu**. Portal langsung membuka halaman **Profil** dan mewajibkan mereka **mengganti sandi** (menu lain terkunci sampai selesai).
+4. Akun yang dibuat lewat **Import**, atau diketik langsung di Google Sheet, belum punya sandi (status *Belum ada sandi*) → gunakan **Reset sandi** atau **Reset sandi massal**.
+5. Untuk banyak akun sekaligus: **Master Data → tab Siswa/Guru → 🔑 Reset sandi massal** (siswa per kelas, maks. 60 akun/proses). Hasilnya daftar sandi yang bisa diunduh Excel atau dicetak PDF — tampil sekali.
+
+### Kenapa sandi lama tidak bisa ditampilkan di Master Data?
+Sandi disimpan sebagai *hash* (diacak satu arah), jadi tidak bisa dibaca balik — bahkan oleh admin atau pemilik spreadsheet. Ini standar keamanan: bila spreadsheet bocor, sandi pengguna tetap aman. Yang tampil di Master Data adalah **Status sandi** (Sandi awal / Sudah diganti / Belum ada sandi). Lupa sandi → **Reset sandi** (otomatis atau tentukan sendiri + konfirmasi).
+
+### Profil & pengaturan
+Semua peran punya menu **Profil & Sandi** (atau tombol ⚙️ Pengaturan di bar atas): melihat data akun, mengubah WhatsApp/email, dan **mengganti sandi sendiri** (sandi saat ini → sandi baru → konfirmasi, dengan indikator kekuatan). Setelah sandi diganti, perangkat lain otomatis keluar.
+
+### Apakah cukup mengubah Kode.gs lalu deploy ulang?
+**Tidak otomatis ke GitHub** — backend dan frontend adalah dua tempat berbeda:
+| Yang diubah | Cara menerapkan |
+|---|---|
+| **Kode.gs** (logika server) | Tempel kode baru → jalankan `setupAppEnvironment` sekali (menambah kolom baru, aman) → **Deploy → Manage deployments → ✏️ → New version → Deploy**. URL `/exec` tidak berubah, `config.js` tidak perlu diubah. |
+| **Tampilan** (`index.html`, `css/`, `js/`) | Timpa file di folder `sikad-frontend` dengan ZIP pembaruan → `git add .` → `git commit -m "v1.2"` → `git push` → tunggu 1–2 menit → **Ctrl+Shift+R**. |
+Fitur baru yang punya tampilan (seperti Profil & reset sandi) butuh **keduanya**. Gunakan `sikad-frontend-update.zip`: berkas ini sengaja **tidak memuat `js/config.js`**, jadi URL backend Anda tidak tertimpa.
+
 ## Troubleshooting
 | Gejala | Solusi |
 |---|---|
@@ -69,4 +94,7 @@ git push -u origin main
 | Notifikasi menumpuk "Menunggu" | Jalankan `pasangTrigger()`; cek token & perangkat Fonnte |
 | Ujian tidak muncul di siswa | Ujian harus **Aktif**, kelasnya sama persis dengan kelas siswa, dan dalam rentang buka–tutup |
 | Arsip rekap gagal | Jalankan `setupAppEnvironment` ulang & izinkan izin Drive; pastikan email admin terisi di menu Notifikasi |
+| Setup error “Anda tidak memiliki izin untuk mengakses dokumen yang diminta” | Gunakan Kode.gs terbaru (v1.1.1), jalankan `setupAppEnvironment` lagi. Pada layar izin, **centang semua kotak** akses (Drive, Spreadsheet, Gmail, UrlFetch) |
+| Setup gagal pada `SpreadsheetApp.create` / “tidak memiliki izin…” | Jalankan `diagnosaIzin` dan lihat baris ❌. Lalu: (1) cabut akses di https://myaccount.google.com/permissions → pilih proyek ini → *Hapus akses*, jalankan ulang & **centang semua kotak**; (2) akun sekolah (Workspace) bisa dibatasi admin domain → coba akun Gmail pribadi; (3) **cara manual** di bawah |
+| Pengguna terkunci di halaman Profil | Itu normal pada login pertama/setelah reset: ganti sandi dulu, menu lain terbuka sesudahnya |
 | Lupa sandi admin | `resetAksesDarurat()` lalu login `darurat`, reset sandi di Master Data |

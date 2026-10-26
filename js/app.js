@@ -93,7 +93,7 @@ function hitungAngka() {
 }
 
 /* ---------- Modal ---------- */
-function modal(html, wide) { $('#modalBody').innerHTML = html; $('.modal-box').classList.toggle('wide', !!wide); $('#modal').hidden = false; document.body.style.overflow = 'hidden'; }
+function modal(html, wide) { $('#modalBody').onclick = null; $('#modalBody').innerHTML = html; $('.modal-box').classList.toggle('wide', !!wide); $('#modal').hidden = false; document.body.style.overflow = 'hidden'; }
 function tutupModal() { $('#modal').hidden = true; document.body.style.overflow = ''; }
 $('#modalX').onclick = tutupModal; $('#modal').onclick = e => { if (e.target.id === 'modal') tutupModal(); }; addEventListener('keydown', e => { if (e.key === 'Escape') tutupModal(); });
 

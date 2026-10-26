@@ -14,6 +14,7 @@ async function apiRun(action, data) {
     const res = await fetch(window.APP_CONFIG.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, token: Sesi.token, data: data || {} }) });
     const j = await res.json();
     if (j.code === 'AUTH') { Sesi.clear(); if (location.hash.indexOf('portal') > -1) location.hash = '#/login'; }
+    if (j.code === 'GANTI_SANDI') { const m = Sesi.me; if (m) { m.gantiSandi = true; Sesi.set(Sesi.token, m); } if (location.hash === '#/portal/profil') { if (typeof route === 'function') route(); } else location.hash = '#/portal/profil'; }
     return j;
   } catch (e) { return { success: false, message: 'Gagal terhubung ke server. Periksa koneksi internet.' }; }
 }

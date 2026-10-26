@@ -3,9 +3,10 @@ const P = $('#portal'), L = $('#landing');
 const MENU = [
   ['SISWA', [['jadwal', '📅', 'Jadwal', ['siswa', 'guru', 'admin']], ['ujian', '📝', 'Ujian Siswa', ['siswa']]]],
   ['GURU', [['dash', '🏠', 'Dashboard', ['guru', 'admin']], ['absensi', '✅', 'Absensi Siswa', ['guru', 'admin']], ['jurnal', '📖', 'Jurnal Mengajar', ['guru', 'admin']], ['ujianG', '🗂️', 'Kelola Ujian', ['guru', 'admin']]]],
-  ['MANAJEMEN / ADMIN', [['monitor', '📊', 'Monitoring KBM', ['admin']], ['master', '🗄️', 'Master Data', ['admin']], ['konten', '🖼️', 'Kelola Konten', ['admin']], ['laporan', '📈', 'Laporan & Rekap', ['admin']], ['crm', '👥', 'CRM Kontak', ['admin']], ['notif', '💬', 'WhatsApp & Notifikasi', ['admin']]]]];
+  ['MANAJEMEN / ADMIN', [['monitor', '📊', 'Monitoring KBM', ['admin']], ['master', '🗄️', 'Master Data', ['admin']], ['konten', '🖼️', 'Kelola Konten', ['admin']], ['laporan', '📈', 'Laporan & Rekap', ['admin']], ['crm', '👥', 'CRM Kontak', ['admin']], ['notif', '💬', 'WhatsApp & Notifikasi', ['admin']]]],
+  ['AKUN', [['profil', '👤', 'Profil & Sandi', ['siswa', 'guru', 'admin']]]]];
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'], BLN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-const hariIni = () => { const d = new Date(), z = n => ('0' + n).slice(-2); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
+const hariIni = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });   // yyyy-mm-dd menurut WIB, sama dengan server
 const tglIndo = s => { const d = new Date(s + 'T12:00:00'); return HARI[d.getDay()] + ', ' + d.getDate() + ' ' + BLN[d.getMonth()] + ' ' + d.getFullYear(); };
 const sk = '<div class="sk"></div><div class="sk" style="width:70%"></div><div class="sk" style="width:85%"></div>';
 let VIEW = 'dash';
@@ -20,7 +21,7 @@ function route() {
     VIEW = h.split('/')[2] || defaultView(); shell();
   } else { P.hidden = true; L.hidden = false; document.body.classList.remove('in-portal', 'ujian'); }
 }
-const defaultView = () => Sesi.me.role === 'siswa' ? 'jadwal' : 'dash';
+const defaultView = () => Sesi.me.gantiSandi ? 'profil' : (Sesi.me.role === 'siswa' ? 'jadwal' : 'dash');
 addEventListener('hashchange', route);
 
 /* ---------- Login ---------- */
@@ -37,12 +38,12 @@ function tampilLogin() {
 /* ---------- Shell ---------- */
 function shell() {
   const me = Sesi.me;
-  const allowed = MENU.flatMap(g => g[1]).filter(m => m[3].indexOf(me.role) > -1).map(m => m[0]); if (allowed.indexOf(VIEW) < 0) VIEW = allowed[0];
-  const nav = MENU.map(g => { const it = g[1].filter(m => m[3].indexOf(me.role) > -1); return it.length ? '<h6>' + g[0] + '</h6>' + it.map(m => '<a class="m' + (m[0] === VIEW ? ' on' : '') + '" href="#/portal/' + m[0] + '"><span>' + m[1] + '</span>' + m[2] + '</a>').join('') : ''; }).join('');
-  P.innerHTML = '<div class="shell"><aside class="side" id="side"><div class="hd"><span class="logo">S</span><div><b>Eduka</b><small>PORTAL AKADEMIK</small></div></div>' + nav + '<div class="ft"><b>SIKAD v1.1</b>Peran: ' + esc(me.role) + '</div></aside><div class="main"><div class="top"><button class="menu-btn" id="mb">☰</button><span class="chip">TA berjalan</span><span class="sp"></span><div style="text-align:right;line-height:1.2"><b style="font-family:Outfit">' + esc(me.nama) + '</b><br><small style="color:var(--mute)">' + esc(me.role) + '</small></div><button class="btn btn-ghost btn-sm" id="out">Keluar</button></div><div class="view" id="view">' + sk + '</div></div></div>';
+  const allowed = MENU.flatMap(g => g[1]).filter(m => m[3].indexOf(me.role) > -1).map(m => m[0]); if (me.gantiSandi) VIEW = 'profil'; if (allowed.indexOf(VIEW) < 0) VIEW = allowed[0];
+  const nav = MENU.map(g => { const it = g[1].filter(m => m[3].indexOf(me.role) > -1 && (!me.gantiSandi || m[0] === 'profil')); return it.length ? '<h6>' + g[0] + '</h6>' + it.map(m => '<a class="m' + (m[0] === VIEW ? ' on' : '') + '" href="#/portal/' + m[0] + '"><span>' + m[1] + '</span>' + m[2] + '</a>').join('') : ''; }).join('');
+  P.innerHTML = '<div class="shell"><aside class="side" id="side"><div class="hd"><span class="logo">S</span><div><b>Eduka</b><small>PORTAL AKADEMIK</small></div></div>' + nav + '<div class="ft"><b>SIKAD v1.2</b>Peran: ' + esc(me.role) + '</div></aside><div class="main"><div class="top"><button class="menu-btn" id="mb">☰</button><span class="chip">TA berjalan</span><span class="sp"></span><a href="#/portal/profil" style="text-align:right;line-height:1.2" title="Profil & pengaturan akun"><b style="font-family:Outfit">' + esc(me.nama) + '</b><br><small style="color:var(--mute)">' + esc(me.role) + '</small></a><a class="btn btn-ghost btn-sm" href="#/portal/profil" title="Pengaturan akun">⚙️ Pengaturan</a><button class="btn btn-ghost btn-sm" id="out">Keluar</button></div><div class="view" id="view">' + sk + '</div></div></div>';
   $('#mb').onclick = () => $('#side').classList.toggle('open'); $('#side').onclick = e => { if (e.target.closest('a')) $('#side').classList.remove('open'); };
   $('#out').onclick = async () => { await api('auth.keluarSemua'); Sesi.clear(); location.hash = '#/login'; };
-  const fn = { dash, jadwal, absensi, jurnal, monitor, master, konten, crm, notif, laporan, ujian: ujianSiswa, ujianG: ujianGuru }[VIEW]; fn($('#view'));
+  const fn = { dash, jadwal, absensi, jurnal, monitor, master, konten, crm, notif, laporan, profil, ujian: ujianSiswa, ujianG: ujianGuru }[VIEW]; fn($('#view'));
 }
 const head = (t, s, extra) => '<div class="ph"><div><h1>' + t + '</h1><p>' + s + '</p></div><div>' + (extra || '') + '</div></div>';
 const bdg = (c, t) => '<span class="badge b-' + c + '">' + t + '</span>';
@@ -105,25 +106,6 @@ async function monitor(v, fresh) {
   api('ujian.ringkasan').then(g => { if (g.success) v.insertAdjacentHTML('beforeend', '<h3 style="margin:8px 0 12px;font-size:1.2rem">Evaluasi Akademik · Nilai Ujian</h3>' + grafikNilai(g.data)); });
   $('#rf').onclick = () => monitor(v, true);
   v.onclick = async e => { const g = e.target.closest('[data-g]'), all = e.target.id === 'ing'; if (!g && !all) return; const s = await api('monitor.ingatkan', g ? { idGuru: g.dataset.g } : {}); toast(s.message, !s.success); };
-}
-
-/* ---------- Master Data (admin) ---------- */
-const MCOL = { guru: [['Nama', 'Nama'], ['NIP', 'NIP'], ['Mapel', 'Mapel'], ['Email', 'Email'], ['NoWA', 'WhatsApp'], ['Peran', 'Peran (guru/admin)'], ['Aktif', 'Aktif (YA/TIDAK)']], siswa: [['Nama', 'Nama'], ['NIS', 'NIS'], ['Kelas', 'Kelas'], ['NoWA', 'WhatsApp'], ['NoWAWali', 'WhatsApp wali'], ['Aktif', 'Aktif (YA/TIDAK)']], kelas: [['IDKelas', 'ID kelas'], ['NamaKelas', 'Nama kelas'], ['IDMapel', 'ID mapel'], ['NamaMapel', 'Nama mapel']], jadwal: [['Hari', 'Hari'], ['JamKe', 'Jam ke'], ['Kelas', 'Kelas'], ['Mapel', 'Mapel'], ['IDGuru', 'ID guru'], ['Ruang', 'Ruang'], ['Waktu', 'Waktu (07:15-08:45)']] };
-let MT = 'guru';
-async function master(v) {
-  v.innerHTML = head('Kelola Master Data', 'Guru, siswa, kelas, mapel, dan jadwal', '<button class="btn btn-ghost" id="imp">⬇ Import dari app lama</button> <button class="btn btn-amber btn-glow" id="add">+ Tambah</button>') +
-    '<div class="tabs">' + Object.keys(MCOL).map(k => '<button data-t="' + k + '" class="' + (k === MT ? 'on' : '') + '">' + k[0].toUpperCase() + k.slice(1) + '</button>').join('') + '</div><div class="panel"><div class="pb" style="padding:10px 18px"><input id="q" placeholder="Cari…"></div><div class="tw" id="mt">' + sk + '</div></div>';
-  const r = await api('master.list', { tabel: MT }); const R = r.success ? r.data : [], C = MCOL[MT], isU = MT === 'guru' || MT === 'siswa';
-  const tabel = q => { const F = R.filter(x => !q || JSON.stringify(x).toLowerCase().indexOf(q) > -1); $('#mt').innerHTML = '<table><tr>' + C.slice(0, 5).map(c => '<th>' + c[1] + '</th>').join('') + '<th></th></tr>' + (F.length ? F.map(x => '<tr>' + C.slice(0, 5).map(c => '<td>' + esc(x[c[0]]) + '</td>').join('') + '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" data-e="' + x._r + '">Ubah</button> ' + (isU ? '<button class="btn btn-ghost btn-sm" data-r="' + x.ID + '">Reset sandi</button>' : '<button class="btn btn-ghost btn-sm" data-d="' + x._r + '">Hapus</button>') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">' + esc(r.message || 'Belum ada data.') + '</td></tr>') + '</table>'; };
-  tabel(''); $('#q').oninput = e => tabel(e.target.value.toLowerCase());
-  const form = row => { modal('<h3>' + (row ? 'Ubah' : 'Tambah') + ' ' + MT + '</h3><form id="mf" style="display:grid;gap:10px">' + C.map(c => '<label>' + c[1] + '<input name="' + c[0] + '" value="' + esc(row ? row[c[0]] : '') + '"></label>').join('') + '<button class="btn btn-navy btn-glow">Simpan</button></form>');
-    $('#mf').onsubmit = async e => { e.preventDefault(); const o = Object.fromEntries(new FormData(e.target)); if (row) o._r = row._r; const s = await api('master.save', { tabel: MT, row: o }); if (!s.success) return toast(s.message, true); tutupModal(); if (s.data && s.data.sandiAwal) modal('<h3>Akun dibuat ✅</h3><p>Sandi awal (catat sekarang, hanya tampil sekali):</p><p style="font:600 1.4rem ui-monospace,monospace;background:#F1F5F9;padding:12px;border-radius:8px;text-align:center">' + esc(s.data.sandiAwal) + '</p>'); else toast(s.message); master(v); }; };
-  $('#add').onclick = () => form(null); v.onclick = async e => { const t = e.target.closest('[data-t]'), ed = e.target.closest('[data-e]'), rs = e.target.closest('[data-r]'), dl = e.target.closest('[data-d]');
-    if (t) { MT = t.dataset.t; master(v); } if (ed) form(R.filter(x => x._r == ed.dataset.e)[0]);
-    if (rs && confirm('Reset sandi akun ini?')) { const s = await api('master.resetSandi', { tabel: MT, id: rs.dataset.r }); if (s.success) modal('<h3>Sandi baru</h3><p style="font:600 1.4rem ui-monospace,monospace;background:#F1F5F9;padding:12px;border-radius:8px;text-align:center">' + esc(s.data.sandiBaru) + '</p><p>Catat sekarang — hanya tampil sekali.</p>'); else toast(s.message, true); }
-    if (dl && confirm('Hapus baris ini?')) { const s = await api('master.hapus', { tabel: MT, _r: dl.dataset.d }); toast(s.message, !s.success); master(v); } };
-  $('#imp').onclick = () => { modal('<h3>Import dari spreadsheet app lama</h3><p style="color:var(--mute);font-size:.9rem">Spreadsheet lama hanya dibaca. Pindai (dry-run) dulu sebelum menjalankan. Sandi lama tidak ikut pindah.</p><label>URL / ID spreadsheet lama<input id="src"></label><div style="display:flex;gap:8px;margin:12px 0"><button class="btn btn-ghost" id="scan">Pindai (dry-run)</button><button class="btn btn-navy" id="run">Jalankan Import</button></div><div id="ir"></div>', true);
-    const go = async dry => { if (!dry && !confirm('Jalankan import sekarang?')) return; const s = await api('master.import', { source: $('#src').value, dryRun: dry }); $('#ir').innerHTML = s.success ? '<table><tr><th>Data</th><th>Lama</th><th>Ditambah</th><th>Diperbarui</th><th>Dilewati</th></tr>' + Object.entries(s.data.report).map(([k, x]) => '<tr><td>' + k + '</td><td>' + x.source + '</td><td>' + x.inserted + '</td><td>' + x.updated + '</td><td>' + x.skipped + '</td></tr>').join('') + '</table>' + s.data.warnings.map(w => '<p class="note">' + esc(w) + '</p>').join('') : '<p class="formmsg err">' + esc(s.message) + '</p>'; }; $('#scan').onclick = () => go(true); $('#run').onclick = () => go(false); };
 }
 
 /* ---------- Kelola Konten (admin) ---------- */
