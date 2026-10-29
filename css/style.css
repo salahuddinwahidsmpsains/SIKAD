@@ -124,3 +124,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--navy);bo
 /* v1.1 */
 .in-portal .wa-float{display:none}.ujian .mascot{display:none}.ujian .side{display:none!important}.ujian .shell{grid-template-columns:1fr}
 .tw table td small{line-height:1.35}.stat.glow-card{overflow:hidden}
+
+/* v1.3 — terasa instan */
+.view{animation:vin .16s ease-out}@keyframes vin{from{opacity:.4;transform:translateY(4px)}}
+.verbar{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:120;background:#1E2B4F;color:#fff;padding:10px 16px;border-radius:12px;box-shadow:0 8px 24px rgba(30,43,79,.35);display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:94vw;font-size:.88rem}
+select{min-height:38px}

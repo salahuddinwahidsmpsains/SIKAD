@@ -4,7 +4,7 @@ const stBdg = s => s === 'Aktif' ? bdg('ok', 'Aktif') : s === 'Tutup' ? bdg('wa'
 
 /* ================= SISWA ================= */
 async function ujianSiswa(v) {
-  const r = await api('ujian.tersedia'); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const r = await apiC('ujian.tersedia', undefined, rr('ujian', v, () => ujianSiswa(v))); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   v.innerHTML = head('Ujian Saya', 'Kerjakan ujian yang ditugaskan guru. Waktu berjalan sejak tombol Mulai ditekan.') +
     (r.data.length ? '<div class="grid3" style="gap:14px">' + r.data.map(u => '<div class="glow-card" style="padding:18px;display:grid;gap:8px"><div>' + bdg('nv', esc(u.jenis)) + ' <span class="chip">' + esc(u.mapel || 'Ujian') + '</span></div><h3 style="font-size:1.1rem">' + esc(u.judul) + '</h3><small style="color:var(--mute)">⏱ ' + u.durasi + ' menit · ' + u.jumlahSoal + ' soal<br>Dibuka: ' + fmtW(u.buka) + ' · Ditutup: ' + fmtW(u.tutup) + '</small>' +
       (u.status === 'selesai' ? '<div style="font:700 2rem Outfit;color:var(--teal)">' + u.nilai + '<small style="font:500 .8rem Inter;color:var(--mute)"> · ' + u.benar + '/' + u.jumlahSoal + ' benar</small></div>' :
@@ -44,7 +44,7 @@ async function kerjakan(v, id, btn) {
 
 /* ================= GURU / ADMIN ================= */
 async function ujianGuru(v) {
-  const [r, ref] = await Promise.all([api('ujian.list'), api('ref')]); const R = r.success ? r.data : [], REF = ref.success ? ref.data : { kelas: [], mapel: [] }, adm = Sesi.me.role === 'admin';
+  const [r, ref] = await Promise.all([apiC('ujian.list', undefined, rr('ujianG', v, () => ujianGuru(v))), apiC('ref')]); const R = r.success ? r.data : [], REF = ref.success ? ref.data : { kelas: [], mapel: [] }, adm = Sesi.me.role === 'admin';
   v.innerHTML = head('Kelola Ujian', 'Buat soal pilihan ganda formatif, sumatif, PTS, atau PAS', '<button class="btn btn-amber btn-glow" id="nb">+ Buat Ujian</button>') +
     '<div class="panel"><div class="tw"><table><tr><th>Ujian</th><th>Kelas</th><th>Soal</th><th>Jadwal</th><th>Peserta</th><th>Rata²</th><th>Status</th><th></th></tr>' +
     (R.length ? R.map(u => '<tr><td><b>' + esc(u.judul) + '</b><br><small style="color:var(--mute)">' + bdg('nv', esc(u.jenis)) + ' ' + esc(u.mapel) + (adm && u.guru ? ' · ' + esc(u.guru) : '') + '</small></td><td>' + esc(u.kelas) + '</td><td class="num">' + u.jumlahSoal + '</td><td><small>' + fmtW(u.buka) + '<br>s/d ' + fmtW(u.tutup) + '<br>⏱ ' + u.durasi + ' mnt</small></td><td class="num">' + u.peserta + '</td><td class="num">' + (u.rata === null ? '—' : u.rata) + '</td><td>' + stBdg(u.status) + '</td><td style="white-space:nowrap">' +

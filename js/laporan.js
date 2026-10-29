@@ -6,7 +6,7 @@ async function laporan(v) {
   v.innerHTML = head('Laporan & Rekap', 'Absensi, jurnal mengajar, nilai ujian — unduh Excel/PDF dan arsip bulanan') + '<div class="panel"><div class="pb"><div class="fgrid"><label>Dari<input type="date" id="ld" value="' + LAP.dari + '"></label><label>Sampai<input type="date" id="ls" value="' + LAP.sampai + '"></label><label>Kelas<select id="lk"><option value="">Semua kelas</option></select></label><label>Cari<input id="lc" placeholder="Nama / topik / guru…" value="' + esc(LAP.cari) + '"></label></div></div></div>' +
     '<div class="tabs">' + [['absensi', 'Rekap Absensi'], ['jurnal', 'Jurnal Mengajar'], ['nilai', 'Nilai Ujian']].map(t => '<button data-t="' + t[0] + '" class="' + (LAP.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div><div id="lb">' + sk + '</div>' +
     '<div class="panel"><div class="pt"><h3>🗄️ Arsip Rekap Bulanan</h3><small style="color:var(--mute)">Excel + PDF disimpan ke folder Drive “Rekap” &amp; dikirim ke email Kepala Sekolah. Otomatis tiap tanggal 1.</small></div><div class="pb"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>Bulan<input type="month" id="bl" value="' + hariIni().slice(0, 7) + '"></label><button class="btn btn-amber btn-glow" id="ar">Buat &amp; Arsipkan</button></div><div id="al" style="margin-top:14px"></div></div></div>';
-  api('ref').then(r => { if (r.success) { $('#lk').innerHTML += r.data.kelas.map(k => '<option' + (k === LAP.kelas ? ' selected' : '') + '>' + esc(k) + '</option>').join(''); } });
+  apiC('ref').then(r => { if (r.success) { $('#lk').innerHTML += r.data.kelas.map(k => '<option' + (k === LAP.kelas ? ' selected' : '') + '>' + esc(k) + '</option>').join(''); } });
   const muat = async () => { LAP.dari = $('#ld').value; LAP.sampai = $('#ls').value; LAP.kelas = $('#lk').value; LAP.cari = $('#lc').value; const lb = $('#lb'); lb.innerHTML = sk; await isi(lb); };
   ['ld', 'ls', 'lk'].forEach(i => $('#' + i).onchange = muat); let tm; $('#lc').oninput = () => { clearTimeout(tm); tm = setTimeout(muat, 300); };
   v.onclick = e => { const t = e.target.closest('[data-t]'); if (t) { LAP.tab = t.dataset.t; laporan(v); } };
@@ -16,11 +16,11 @@ async function laporan(v) {
 async function isi(lb) {
   const q = LAP.cari.toLowerCase(), cocok = a => !q || a.join(' ').toLowerCase().indexOf(q) > -1; let kol, bar, sub = LAP.dari + ' s/d ' + LAP.sampai + (LAP.kelas ? ' · ' + LAP.kelas : ''), judul, extra = '';
   if (LAP.tab === 'nilai') {
-    const [r, g] = await Promise.all([api('ujian.list'), api('ujian.ringkasan')]); if (!r.success) return lb.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+    const [r, g] = await Promise.all([apiC('ujian.list'), apiC('ujian.ringkasan')]); if (!r.success) return lb.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
     judul = 'Nilai Ujian'; kol = ['Ujian', 'Jenis', 'Mapel', 'Kelas', 'Guru', 'Peserta', 'Rata-rata', 'Status']; bar = r.data.filter(u => !LAP.kelas || u.kelas === LAP.kelas).map(u => [u.judul, u.jenis, u.mapel, u.kelas, u.guru, u.peserta, u.rata === null ? '' : u.rata, u.status]).filter(cocok); sub = 'Semua ujian';
     if (g.success) extra = grafikNilai(g.data);
   } else {
-    const r = await api('laporan', { dari: LAP.dari, sampai: LAP.sampai, kelas: LAP.kelas }); if (!r.success) return lb.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+    const r = await apiC('laporan', { dari: LAP.dari, sampai: LAP.sampai, kelas: LAP.kelas }); if (!r.success) return lb.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
     if (LAP.tab === 'absensi') { judul = 'Rekap Absensi'; kol = ['Kelas', 'NIS', 'Nama', 'Hadir', 'Sakit', 'Izin', 'Alpa', 'Total', '% Hadir']; bar = r.data.absensi.map(a => [a.kelas, a.nis, a.nama, a.H, a.S, a.I, a.A, a.total, a.persen]).filter(cocok); }
     else { judul = 'Jurnal Mengajar'; kol = ['Tanggal', 'Jam', 'Guru', 'Kelas', 'Mapel', 'Topik', 'Kendala']; bar = r.data.jurnal.map(j => [j.tanggal, j.jamKe, j.guru, j.kelas, j.mapel, j.topik, j.kendala]).filter(cocok); }
   }
@@ -34,6 +34,6 @@ function grafikNilai(d) {
   return '<div class="two" style="grid-template-columns:1fr 1fr"><div class="panel"><div class="pt"><h3>Rata-rata Nilai per Mapel</h3></div><div class="pb"><div class="bars">' + b(d.perMapel, 'var(--teal)') + '</div></div></div><div class="panel"><div class="pt"><h3>Rata-rata Nilai per Kelas</h3></div><div class="pb"><div class="bars">' + b(d.perKelas, 'var(--amber)') + '</div></div></div></div>';
 }
 async function daftarArsip() {
-  const r = await api('rekap.daftar'), el = $('#al'); if (!el) return;
+  const r = await apiC('rekap.daftar'), el = $('#al'); if (!el) return;
   el.innerHTML = r.success && r.data.length ? '<table><tr><th>Bulan</th><th>Excel</th><th>PDF</th><th>Email</th></tr>' + r.data.map(a => '<tr><td><b>' + esc(a.bulan) + '</b></td><td><a href="' + esc(a.xlsx) + '" target="_blank" rel="noopener" style="color:var(--teal);font-weight:600">Buka .xlsx</a></td><td><a href="' + esc(a.pdf) + '" target="_blank" rel="noopener" style="color:var(--teal);font-weight:600">Buka .pdf</a></td><td>' + (a.dikirim ? bdg('ok', 'Terkirim') : bdg('wa', 'Tidak dikirim')) + '</td></tr>').join('') + '</table>' : '<div class="empty" style="padding:10px">Belum ada arsip.</div>';
 }

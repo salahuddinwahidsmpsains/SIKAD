@@ -32,25 +32,54 @@ function tampilLogin() {
   warmUp();
   $('#lf').onsubmit = async e => { e.preventDefault(); const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Memeriksa…';
     const r = await api('auth.login', { username: e.target.u.value, password: e.target.p.value }); b.disabled = false; b.textContent = 'Masuk';
-    if (!r.success) { $('#lm').textContent = r.message; return; } Sesi.set(r.data.token, r.data.me); location.hash = '#/portal/' + defaultView(); };
+    if (!r.success) { $('#lm').textContent = r.message; return; } SWR.clear(); Sesi.set(r.data.token, r.data.me); primeSWR(r.data.boot); location.hash = '#/portal/' + defaultView(); };
 }
 
 /* ---------- Shell ---------- */
-function shell() {
-  const me = Sesi.me;
-  const allowed = MENU.flatMap(g => g[1]).filter(m => m[3].indexOf(me.role) > -1).map(m => m[0]); if (me.gantiSandi) VIEW = 'profil'; if (allowed.indexOf(VIEW) < 0) VIEW = allowed[0];
-  const nav = MENU.map(g => { const it = g[1].filter(m => m[3].indexOf(me.role) > -1 && (!me.gantiSandi || m[0] === 'profil')); return it.length ? '<h6>' + g[0] + '</h6>' + it.map(m => '<a class="m' + (m[0] === VIEW ? ' on' : '') + '" href="#/portal/' + m[0] + '"><span>' + m[1] + '</span>' + m[2] + '</a>').join('') : ''; }).join('');
-  P.innerHTML = '<div class="shell"><aside class="side" id="side"><div class="hd"><span class="logo">S</span><div><b>Eduka</b><small>PORTAL AKADEMIK</small></div></div>' + nav + '<div class="ft"><b>SIKAD v1.2</b>Peran: ' + esc(me.role) + '</div></aside><div class="main"><div class="top"><button class="menu-btn" id="mb">☰</button><span class="chip">TA berjalan</span><span class="sp"></span><a href="#/portal/profil" style="text-align:right;line-height:1.2" title="Profil & pengaturan akun"><b style="font-family:Outfit">' + esc(me.nama) + '</b><br><small style="color:var(--mute)">' + esc(me.role) + '</small></a><a class="btn btn-ghost btn-sm" href="#/portal/profil" title="Pengaturan akun">⚙️ Pengaturan</a><button class="btn btn-ghost btn-sm" id="out">Keluar</button></div><div class="view" id="view">' + sk + '</div></div></div>';
-  $('#mb').onclick = () => $('#side').classList.toggle('open'); $('#side').onclick = e => { if (e.target.closest('a')) $('#side').classList.remove('open'); };
-  $('#out').onclick = async () => { await api('auth.keluarSemua'); Sesi.clear(); location.hash = '#/login'; };
-  const fn = { dash, jadwal, absensi, jurnal, monitor, master, konten, crm, notif, laporan, profil, ujian: ujianSiswa, ujianG: ujianGuru }[VIEW]; fn($('#view'));
+let SHELL_KEY = '';
+const VIEWS = () => ({ dash, jadwal, absensi, jurnal, monitor, master, konten, crm, notif, laporan, profil, ujian: ujianSiswa, ujianG: ujianGuru });
+const WARM = {                                   // data yang dimuat lebih awal saat kursor menyentuh menu (kunci harus sama dengan yang dipakai halaman)
+  dash: () => [{ action: 'jadwal.hariIni', data: { tanggal: hariIni() } }], jadwal: () => [{ action: 'jadwal.minggu' }], profil: () => [{ action: 'profil.get' }],
+  absensi: () => { const k = { action: 'jadwal.hariIni', data: { tanggal: hariIni(), semua: Sesi.me.id === 'darurat' } }, c = SWR.get(swrKey(k.action, k.data) ) || SWR.get(swrKey('jadwal.hariIni', { tanggal: hariIni() })), o = [k]; if (c && c.data.jadwal && c.data.jadwal.length) o.push({ action: 'absensi.get', data: { tanggal: hariIni(), kelas: c.data.jadwal[0].kelas, jamKe: c.data.jadwal[0].jamKe } }); return o; }, jurnal: () => [{ action: 'jadwal.hariIni', data: { tanggal: hariIni(), semua: Sesi.me.id === 'darurat' } }, { action: 'jurnal.list', data: {} }],
+  monitor: () => [{ action: 'monitor', data: { tanggal: hariIni() } }, { action: 'ujian.ringkasan' }], master: () => [{ action: 'master.list', data: { tabel: MT } }], konten: () => [{ action: 'konten.list' }], crm: () => [{ action: 'crm.stats' }, { action: 'crm.list', data: { cari: '', segmen: '', halaman: 1 } }],
+  notif: () => [{ action: 'notif.get' }], ujian: () => [{ action: 'ujian.tersedia' }], ujianG: () => [{ action: 'ujian.list' }, { action: 'ref' }] };
+const warmView = n => { const f = WARM[n]; if (f) prefetch(f()); };
+function prefetchRole(me) {                      // saat idle setelah masuk: muat menu yang sering dibuka dalam 1 panggilan batch
+  if (me.gantiSandi) return; const t = hariIni(), c = [];
+  if (me.role === 'siswa') c.push({ action: 'ujian.tersedia' });
+  else { c.push({ action: 'jadwal.hariIni', data: { tanggal: t, semua: me.id === 'darurat' } }, { action: 'jurnal.list', data: {} }, { action: 'ujian.list' }, { action: 'ref' }); if (me.role === 'admin') c.push({ action: 'monitor', data: { tanggal: t } }, { action: 'konten.list' }, { action: 'crm.stats' }, { action: 'crm.list', data: { cari: '', segmen: '', halaman: 1 } }, { action: 'notif.get' }); }
+  const jd = SWR.get(swrKey('jadwal.hariIni', { tanggal: hariIni() })); if (me.role !== 'siswa' && jd && jd.data.jadwal && jd.data.jadwal.length) c.splice(1, 0, { action: 'absensi.get', data: { tanggal: hariIni(), kelas: jd.data.jadwal[0].kelas, jamKe: jd.data.jadwal[0].jamKe } });
+  prefetch(c.slice(0, 12));
 }
+function montaShell(me) {                        // dibangun SEKALI per pengguna; berpindah menu hanya mengganti isi halaman
+  const nav = MENU.map(g => [g[0], g[1].filter(m => m[3].indexOf(me.role) > -1 && (!me.gantiSandi || m[0] === 'profil'))]).filter(g => g[1].length).map(g => '<h6>' + g[0] + '</h6>' + g[1].map(m => '<a class="m" data-v="' + m[0] + '" href="#/portal/' + m[0] + '"><span>' + m[1] + '</span>' + m[2] + '</a>').join('')).join('');
+  P.innerHTML = '<div class="shell"><aside class="side" id="side"><div class="hd"><span class="logo">S</span><div><b>Eduka</b><small>PORTAL AKADEMIK</small></div></div>' + nav + '<div class="ft"><b>SIKAD v1.3</b>Peran: ' + esc(me.role) + '</div></aside><div class="main"><div class="top"><button class="menu-btn" id="mb">☰</button><span class="chip">TA berjalan</span><span class="sp"></span><a href="#/portal/profil" style="text-align:right;line-height:1.2" title="Profil & pengaturan akun"><b style="font-family:Outfit">' + esc(me.nama) + '</b><br><small style="color:var(--mute)">' + esc(me.role) + '</small></a><a class="btn btn-ghost btn-sm" href="#/portal/profil" title="Pengaturan akun">⚙️ Pengaturan</a><button class="btn btn-ghost btn-sm" id="out">Keluar</button></div><div class="view" id="view"></div></div></div>';
+  $('#mb').onclick = () => $('#side').classList.toggle('open');
+  $('#side').onclick = e => { if (e.target.closest('a')) $('#side').classList.remove('open'); };
+  const warm = e => { const a = e.target.closest && e.target.closest('a.m'); if (a && a.dataset.v !== VIEW) warmView(a.dataset.v); };
+  $('#side').addEventListener('pointerover', warm); $('#side').addEventListener('pointerdown', warm);
+  $('#out').onclick = () => { api('auth.keluarSemua'); Sesi.clear(); SWR.clear(); SHELL_KEY = ''; location.hash = '#/login'; };   // tak menunggu server
+}
+function shell() {
+  const me = Sesi.me, allowed = MENU.flatMap(g => g[1]).filter(m => m[3].indexOf(me.role) > -1).map(m => m[0]);
+  if (me.gantiSandi) VIEW = 'profil'; if (allowed.indexOf(VIEW) < 0) VIEW = allowed[0];
+  const key = me.id + '|' + me.role + '|' + (me.gantiSandi ? 1 : 0);
+  if (SHELL_KEY !== key || !$('#view')) { montaShell(me); SHELL_KEY = key; idle(() => prefetchRole(me)); }
+  document.body.classList.remove('ujian'); const sd = $('#side'); sd.style.display = ''; $$('#side a.m').forEach(a => a.classList.toggle('on', a.dataset.v === VIEW));
+  const old = $('#view'), v = document.createElement('div'); v.className = 'view'; v.id = 'view'; v.innerHTML = sk; old.replaceWith(v);   // wadah baru → penangan lama tak bocor
+  VIEWS()[VIEW](v);
+}
+addEventListener('storage', e => {              // akun diganti/keluar di tab lain → tab ini menyesuaikan (tak lagi memakai token akun lain secara diam-diam)
+  if (e.key !== 'sikad_t' && e.key !== 'sikad_m') return; SHELL_KEY = '';
+  if (!Sesi.token) { toast('Anda keluar dari akun ini (di tab lain).', true); if (location.hash.indexOf('#/portal') === 0) location.hash = '#/login'; else route(); }
+  else if (!P.hidden) { toast('Akun diganti di tab/jendela lain — tampilan disesuaikan.', true); route(); }
+});
 const head = (t, s, extra) => '<div class="ph"><div><h1>' + t + '</h1><p>' + s + '</p></div><div>' + (extra || '') + '</div></div>';
 const bdg = (c, t) => '<span class="badge b-' + c + '">' + t + '</span>';
 
 /* ---------- Dashboard guru/admin ---------- */
 async function dash(v) {
-  const r = await api('jadwal.hariIni', { tanggal: hariIni() }); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const r = await apiC('jadwal.hariIni', { tanggal: hariIni() }, rr('dash', v, () => dash(v))); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   const J = r.data.jadwal, done = J.filter(j => j.jurnal).length, abs = J.filter(j => j.absen).length;
   v.innerHTML = head('Selamat datang, ' + esc(Sesi.me.nama), tglIndo(hariIni()), '<a class="btn btn-amber btn-glow" href="#/portal/absensi">+ Isi Absensi</a> <a class="btn btn-navy" href="#/portal/jurnal">+ Isi Jurnal</a>') +
     '<div class="cards"><div class="glow-card stat"><small>Jadwal hari ini</small><div class="v">' + J.length + ' sesi</div></div><div class="glow-card stat"><small>Absensi terisi</small><div class="v t">' + abs + ' / ' + J.length + '</div></div><div class="glow-card stat"><small>Jurnal terisi</small><div class="v a">' + done + ' / ' + J.length + '</div><div class="s">' + (J.length - done) + ' menunggu</div></div></div>' +
@@ -60,30 +89,33 @@ async function dash(v) {
 
 /* ---------- Jadwal ---------- */
 async function jadwal(v) {
-  const r = await api('jadwal.minggu'); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const r = await apiC('jadwal.minggu', undefined, rr('jadwal', v, () => jadwal(v))); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   v.innerHTML = head('Jadwal Pelajaran', 'Jadwal satu pekan') + r.data.map(h => '<div class="panel"><div class="pt"><h3>' + h.hari + '</h3>' + (HARI[new Date().getDay()] === h.hari ? bdg('ok', 'Hari ini') : '') + '</div><div class="tw"><table>' + (h.sesi.length ? h.sesi.map(s => '<tr><td style="width:70px">Jam ' + esc(s.jamKe) + '</td><td>' + esc(s.waktu) + '</td><td><b>' + esc(s.mapel) + '</b></td><td>' + esc(s.kelas) + '</td><td>' + esc(s.ruang) + '</td></tr>').join('') : '<tr><td class="empty">Tidak ada sesi.</td></tr>') + '</table></div></div>').join('');
 }
 
 /* ---------- Absensi ---------- */
 async function absensi(v) {
-  const tgl = hariIni(), r = await api('jadwal.hariIni', { tanggal: tgl, semua: Sesi.me.id === 'darurat' }); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const tgl = hariIni(), r = await apiC('jadwal.hariIni', { tanggal: tgl, semua: Sesi.me.id === 'darurat' }); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   const J = r.data.jadwal; if (!J.length) return v.innerHTML = head('Input Presensi Siswa', tglIndo(tgl)) + '<div class="panel"><div class="empty">Tidak ada jadwal mengajar hari ini.</div></div>';
   v.innerHTML = head('Input Presensi Siswa', 'Pilih sesi mengajar, lalu tandai status tiap siswa', '<span class="chip">' + tglIndo(tgl) + '</span>') + '<div class="panel"><div class="pb"><label>Sesi mengajar<select id="ses">' + J.map((j, i) => '<option value="' + i + '">Jam ' + esc(j.jamKe) + ' · ' + esc(j.kelas) + ' · ' + esc(j.mapel) + '</option>').join('') + '</select></label></div></div><div id="ab">' + sk + '</div>';
-  const muat = async () => { const j = J[+$('#ses').value], ab = $('#ab'); ab.innerHTML = sk; const g = await api('absensi.get', { tanggal: tgl, kelas: j.kelas, jamKe: j.jamKe }); if (!g.success) return ab.innerHTML = '<div class="panel"><div class="empty">' + esc(g.message) + '</div></div>';
+  const muat = async () => { const j = J[+$('#ses').value], ab = $('#ab'); ab.innerHTML = sk; const g = await apiC('absensi.get', { tanggal: tgl, kelas: j.kelas, jamKe: j.jamKe }); if (!g.success) return ab.innerHTML = '<div class="panel"><div class="empty">' + esc(g.message) + '</div></div>';
     const S = g.data.siswa, st = {}, ct = {}; S.forEach(s => { st[s.id] = (g.data.status[s.id] || {}).status || 'H'; ct[s.id] = (g.data.status[s.id] || {}).catatan || ''; });
     const kunci = g.data.tersimpan && Sesi.me.role !== 'admin';
     const hit = () => { const o = { H: 0, S: 0, I: 0, A: 0 }; Object.values(st).forEach(x => o[x]++); $('#sum').innerHTML = '<span>Total <b>' + S.length + '</b></span> · <span style="color:#059669">Hadir <b>' + o.H + '</b></span> · <span style="color:#D97706">Sakit <b>' + o.S + '</b></span> · <span style="color:#2563EB">Izin <b>' + o.I + '</b></span> · <span style="color:#DC2626">Alpa <b>' + o.A + '</b></span>'; };
     ab.innerHTML = '<div class="panel"><div class="pt"><h3>Daftar Presensi · ' + S.length + ' siswa</h3>' + (kunci ? bdg('nv', 'Tersimpan — hanya admin yang dapat mengubah') : '<button class="btn btn-ghost btn-sm" id="allH">Tandai semua hadir</button>') + '</div><div class="tw"><table><tr><th>No</th><th>Nama</th><th>NIS</th><th>Status</th><th>Catatan</th></tr>' +
       (S.length ? S.map((s, i) => '<tr data-id="' + s.id + '"><td>' + (i + 1) + '</td><td><b>' + esc(s.nama) + '</b></td><td style="font-family:ui-monospace,monospace">' + esc(s.nis) + '</td><td><div class="sbtn">' + [['H', 'Hadir'], ['S', 'Sakit'], ['I', 'Izin'], ['A', 'Alpa']].map(x => '<button class="' + x[0] + (st[s.id] === x[0] ? ' on' : '') + '" data-s="' + x[0] + '"' + (kunci ? ' disabled' : '') + '>' + x[0] + ' ' + x[1] + '</button>').join('') + '</div></td><td><input data-c value="' + esc(ct[s.id]) + '" maxlength="200" placeholder="-"' + (kunci ? ' disabled' : '') + '></td></tr>').join('') : '<tr><td colspan="5" class="empty">Belum ada siswa di kelas ini.</td></tr>') + '</table></div><div class="savebar"><div id="sum"></div>' + (kunci ? '' : '<button class="btn btn-amber btn-glow" id="sv">✔ Simpan Presensi Kelas</button>') + '</div></div>'; hit();
     ab.onclick = e => { const b = e.target.closest('button[data-s]'); if (b) { const tr = b.closest('tr'); st[tr.dataset.id] = b.dataset.s; $$('button', tr).forEach(x => x.classList.toggle('on', x === b)); hit(); } if (e.target.id === 'allH') { S.forEach(s => st[s.id] = 'H'); $$('#ab tr[data-id] button').forEach(x => x.classList.toggle('on', x.dataset.s === 'H')); hit(); } };
-    if (!kunci && $('#sv')) $('#sv').onclick = async e => { const b = e.target; b.disabled = true; b.textContent = 'Menyimpan…'; $$('#ab tr[data-id]').forEach(tr => ct[tr.dataset.id] = $('[data-c]', tr).value);
-      const s = await api('absensi.save', { tanggal: tgl, kelas: j.kelas, jamKe: j.jamKe, items: S.map(x => ({ id: x.id, status: st[x.id], catatan: ct[x.id] })) }); b.disabled = false; b.textContent = '✔ Simpan Presensi Kelas'; toast(s.message || 'Gagal', !s.success); if (s.success) muat(); }; };
+    if (!kunci && $('#sv')) $('#sv').onclick = async e => { const b = e.target; $$('#ab tr[data-id]').forEach(tr => ct[tr.dataset.id] = $('[data-c]', tr).value);
+      b.disabled = true; b.textContent = '✔ Tersimpan'; toast('Presensi tersimpan ✅');                         // optimistik: terasa instan, dikirim di latar (reqId → aman diulang)
+      const g = ev => { ev.preventDefault(); ev.returnValue = ''; }; addEventListener('beforeunload', g);          // jangan tutup tab sebelum terkirim
+      const s = await api('absensi.save', { tanggal: tgl, kelas: j.kelas, jamKe: j.jamKe, items: S.map(x => ({ id: x.id, status: st[x.id], catatan: ct[x.id] })) }); removeEventListener('beforeunload', g);
+      if (!s.success) { b.disabled = false; b.textContent = '✔ Simpan Presensi Kelas'; toast((s.message || 'Gagal') + ' — presensi BELUM tersimpan, coba lagi.', true); } else muat(); }; };
   $('#ses').onchange = muat; muat();
 }
 
 /* ---------- Jurnal ---------- */
 async function jurnal(v) {
-  const tgl = hariIni(), [r, h] = await Promise.all([api('jadwal.hariIni', { tanggal: tgl, semua: Sesi.me.id === 'darurat' }), api('jurnal.list', {})]);
+  const tgl = hariIni(), [r, h] = await Promise.all([apiC('jadwal.hariIni', { tanggal: tgl, semua: Sesi.me.id === 'darurat' }), apiC('jurnal.list', {})]);
   const J = r.success ? r.data.jadwal.filter(j => !j.jurnal) : [];
   v.innerHTML = head('Jurnal Mengajar Harian', tglIndo(tgl)) + '<div class="two"><div class="panel"><div class="pt"><h3>Lembar Laporan KBM</h3></div><div class="pb">' + (J.length ? '<form id="jf" style="display:grid;gap:12px"><label>Sesi<select name="s">' + J.map((j, i) => '<option value="' + i + '">Jam ' + esc(j.jamKe) + ' · ' + esc(j.kelas) + ' · ' + esc(j.mapel) + '</option>').join('') + '</select></label><label>Topik / pokok bahasan *<input name="t" required maxlength="200"></label><label>Catatan kelas<textarea name="c" rows="4" maxlength="1000"></textarea></label><label>Kendala KBM<textarea name="k" rows="3" maxlength="1000" placeholder="Opsional"></textarea></label><button class="btn btn-amber btn-glow" type="submit">▷ Kirim Jurnal Mengajar</button></form>' : '<div class="empty">🎉 Semua jurnal hari ini sudah terisi (atau tidak ada jadwal).</div>') + '</div></div>' +
     '<div class="panel"><div class="pt"><h3>Riwayat Terbaru</h3></div><div class="tw"><table>' + ((h.success && h.data.length) ? h.data.slice(0, 12).map(x => '<tr><td>' + esc(x.tanggal) + '<br><small style="color:var(--mute)">' + esc(x.kelas) + ' · jam ' + esc(x.jamKe) + '</small></td><td>' + esc(x.topik) + (Sesi.me.role === 'admin' ? '<br><small style="color:var(--mute)">' + esc(x.guru) + '</small>' : '') + '</td></tr>').join('') : '<tr><td class="empty">Belum ada jurnal.</td></tr>') + '</table></div></div></div>';
@@ -93,7 +125,7 @@ async function jurnal(v) {
 
 /* ---------- Monitoring (admin) ---------- */
 async function monitor(v, fresh) {
-  const r = await api('monitor', { tanggal: hariIni(), _fresh: !!fresh }); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const r = await apiC('monitor', { tanggal: hariIni() }, rr('monitor', v, () => monitor(v)), { force: !!fresh, extra: fresh ? { _fresh: true } : undefined }); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   const d = r.data, s = d.status, tot = s.H + s.S + s.I + s.A, pc = tot ? (s.H / tot * 100) : 0, W = 560, Hh = 150, T = d.tren, mx = 100, mn = Math.max(0, Math.min(...T.map(x => x.persen)) - 10);
   const pts = T.map((x, i) => [20 + i * (W - 40) / Math.max(1, T.length - 1), Hh - 20 - ((x.persen - mn) / (mx - mn || 1)) * (Hh - 40)]);
   const conic = tot ? 'conic-gradient(#059669 0 ' + pc + '%,#F5A524 0 ' + ((s.H + s.S) / tot * 100) + '%,#2563EB 0 ' + ((s.H + s.S + s.I) / tot * 100) + '%,#DC2626 0)' : '#E2E8F0';
@@ -103,14 +135,14 @@ async function monitor(v, fresh) {
     '<div class="panel"><div class="pt"><h3>Distribusi Presensi</h3></div><div class="pb"><div class="donut" style="background:' + conic + '"><div><span>' + pc.toFixed(1) + '%<small>Hadir</small></span></div></div><p style="text-align:center;font-size:.82rem;color:var(--mute)">Hadir ' + s.H + ' · Sakit ' + s.S + ' · Izin ' + s.I + ' · Alpa ' + s.A + '</p></div></div></div>' +
     '<div class="panel"><div class="pt"><h3>Absensi per Kelas (hari ini)</h3></div><div class="pb"><div class="bars">' + (d.perKelas.length ? d.perKelas.map(k => '<div class="bar"><b>' + esc(k.kelas) + '</b><div class="tr"><i style="width:' + k.persen + '%"></i></div><span>' + k.persen + '%</span></div>').join('') : '<div class="empty">Belum ada absensi hari ini.</div>') + '</div></div></div>' +
     '<div class="panel"><div class="pt"><h3>Sesi Belum Memiliki Jurnal</h3>' + (d.belumJurnal.length ? '<button class="btn btn-amber btn-sm" id="ing">Kirim pengingat ke semua</button>' : '') + '</div><div class="tw"><table><tr><th>Guru</th><th>Kelas</th><th>Jam</th><th>Mapel</th><th></th></tr>' + (d.belumJurnal.length ? d.belumJurnal.map(b => '<tr><td><b>' + esc(b.guru) + '</b></td><td>' + esc(b.kelas) + '</td><td>' + esc(b.jamKe) + '</td><td>' + esc(b.mapel) + '</td><td><button class="btn btn-ghost btn-sm" data-g="' + esc(b.idGuru) + '">Ingatkan</button></td></tr>').join('') : '<tr><td colspan="5" class="empty">✅ Semua jurnal terisi.</td></tr>') + '</table></div></div>';
-  api('ujian.ringkasan').then(g => { if (g.success) v.insertAdjacentHTML('beforeend', '<h3 style="margin:8px 0 12px;font-size:1.2rem">Evaluasi Akademik · Nilai Ujian</h3>' + grafikNilai(g.data)); });
+  apiC('ujian.ringkasan').then(g => { if (g.success) v.insertAdjacentHTML('beforeend', '<h3 style="margin:8px 0 12px;font-size:1.2rem">Evaluasi Akademik · Nilai Ujian</h3>' + grafikNilai(g.data)); });
   $('#rf').onclick = () => monitor(v, true);
   v.onclick = async e => { const g = e.target.closest('[data-g]'), all = e.target.id === 'ing'; if (!g && !all) return; const s = await api('monitor.ingatkan', g ? { idGuru: g.dataset.g } : {}); toast(s.message, !s.success); };
 }
 
 /* ---------- Kelola Konten (admin) ---------- */
 async function konten(v) {
-  const r = await api('konten.list'); const R = r.success ? r.data : [];
+  const r = await apiC('konten.list', undefined, rr('konten', v, () => konten(v))); const R = r.success ? r.data : [];
   v.innerHTML = head('Kelola Konten Landing Page', 'Slide hero, program, berita, pengumuman, testimoni', '<button class="btn btn-amber btn-glow" id="add">+ Konten Baru</button>') + '<div class="panel"><div class="tw"><table><tr><th>Jenis</th><th>Judul</th><th>Tanggal</th><th>Tayang</th><th></th></tr>' + (R.length ? R.map(x => '<tr><td>' + bdg('nv', esc(x.Jenis)) + '</td><td>' + esc(x.Judul) + '</td><td>' + esc(x.Tanggal) + '</td><td>' + (x.Tayang === 'YA' ? bdg('ok', 'Ya') : bdg('wa', 'Draf')) + '</td><td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" data-e="' + x._r + '">Ubah</button> <button class="btn btn-ghost btn-sm" data-d="' + x._r + '">Hapus</button></td></tr>').join('') : '<tr><td colspan="5" class="empty">Belum ada konten.</td></tr>') + '</table></div></div>';
   const form = row => { modal('<h3>' + (row ? 'Ubah' : 'Tambah') + ' konten</h3><form id="kf" style="display:grid;gap:10px"><label>Jenis<select name="Jenis">' + ['slide', 'program', 'berita', 'pengumuman', 'testimoni'].map(j => '<option' + (row && row.Jenis === j ? ' selected' : '') + '>' + j + '</option>').join('') + '</select></label><label>Judul<input name="Judul" value="' + esc(row ? row.Judul : '') + '" required></label><label>Isi<textarea name="Isi" rows="4">' + esc(row ? row.Isi : '') + '</textarea></label><label>URL gambar (pisahkan koma; boleh link Google Drive — bisa banyak untuk slideshow)<textarea name="Gambar" rows="2">' + esc(row ? row.Gambar : '') + '</textarea></label><label>Meta JSON (opsional: {"kata":"Hebat"} / {"ikon":"🔬"} / {"nama":"..","peran":"..","bintang":5})<input name="Meta" value="' + esc(row ? row.Meta : '') + '"></label><label>Tayang<select name="Tayang"><option>YA</option><option' + (row && row.Tayang === 'TIDAK' ? ' selected' : '') + '>TIDAK</option></select></label><button class="btn btn-navy btn-glow">Simpan & Tayangkan</button></form>', true);
     $('#kf').onsubmit = async e => { e.preventDefault(); const o = Object.fromEntries(new FormData(e.target)); if (row) { o._r = row._r; o.Tanggal = row.Tanggal; } const s = await api('konten.save', { row: o }); toast(s.message, !s.success); if (s.success) { localStorage.removeItem('sikad_pub'); tutupModal(); konten(v); } }; };
@@ -120,7 +152,7 @@ async function konten(v) {
 /* ---------- CRM (admin) ---------- */
 let CRMQ = '', CRMS = '', CRMH = 1;
 async function crm(v) {
-  const [st, ls] = await Promise.all([api('crm.stats'), api('crm.list', { cari: CRMQ, segmen: CRMS, halaman: CRMH })]), S = st.success ? st.data : {}, D = ls.success ? ls.data : { rows: [], facet: {}, total: 0 };
+  const [st, ls] = await Promise.all([apiC('crm.stats', undefined, rr('crm', v, () => crm(v))), apiC('crm.list', { cari: CRMQ, segmen: CRMS, halaman: CRMH }, rr('crm', v, () => crm(v)))]), S = st.success ? st.data : {}, D = ls.success ? ls.data : { rows: [], facet: {}, total: 0 };
   v.innerHTML = head('CRM Kontak', 'Nama · Email · WhatsApp seluruh guru, siswa, wali, dan calon siswa', '<button class="btn btn-ghost" id="sy">↻ Sinkron Sekarang</button>') +
     '<div class="cards"><div class="glow-card stat"><small>Total kontak</small><div class="v">' + (S.total || 0) + '</div></div><div class="glow-card stat"><small>Punya WhatsApp</small><div class="v t">' + (S.adaWA || 0) + '</div></div><div class="glow-card stat"><small>Email valid</small><div class="v">' + (S.emailValid || 0) + '</div></div><div class="glow-card stat"><small>Opt-out</small><div class="v a">' + (S.optOut || 0) + '</div></div><div class="glow-card stat"><small>Nomor duplikat</small><div class="v">' + (S.duplikat || 0) + '</div></div></div>' +
     '<div class="tabs"><button data-s="" class="' + (CRMS ? '' : 'on') + '">Semua</button>' + Object.keys(D.facet).map(k => '<button data-s="' + esc(k) + '" class="' + (CRMS === k ? 'on' : '') + '">' + esc(k) + ' ' + D.facet[k] + '</button>').join('') + '</div>' +
@@ -133,7 +165,7 @@ async function crm(v) {
 
 /* ---------- WhatsApp & Notifikasi (admin) ---------- */
 async function notif(v) {
-  const r = await api('notif.get'); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
+  const r = await apiC('notif.get'); if (!r.success) return v.innerHTML = '<div class="panel"><div class="empty">' + esc(r.message) + '</div></div>';
   const d = r.data, p = d.pengaturan, mx = d.matriks, sw = (id, on) => '<label class="sw"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '><i></i></label>';
   v.innerHTML = head('WhatsApp & Notifikasi', 'Fonnte (WA) + Email · dikirim lewat antrean, bukan langsung') +
     '<div class="cards"><div class="glow-card stat"><small>Menunggu</small><div class="v a">' + d.antrean.menunggu + '</div></div><div class="glow-card stat"><small>Terkirim</small><div class="v t">' + d.antrean.terkirim + '</div></div><div class="glow-card stat"><small>Gagal</small><div class="v" style="color:#B91C1C">' + d.antrean.gagal + '</div></div></div>' +
